@@ -4,17 +4,23 @@ import logging
 import random
 import curses
 from collections import deque
+import sys
+sys.setrecursionlimit(1000000)
 
 kernel = '''\
-   ╻ ╻ ╻   
-   ┗━╋━┛   
-     ┃     
-╺┓ ┏━┻━┓ ┏╸
-╺╋━┫   ┣━╋╸
-╺┛ ┗━┳━┛ ┗╸
-     ┃     
-   ┏━╋━┓   
-   ╹ ╹ ╹   
+    ╻  ╻  ╻    
+    ┗━━╋━━┛    
+       ┃       
+       ┃       
+╺┓  ┏━━┻━━┓  ┏╸
+ ┃  ┃     ┃  ┃ 
+╺╋━━┫     ┣━━╋╸
+ ┃  ┃     ┃  ┃ 
+╺┛  ┗━━┳━━┛  ┗╸
+       ┃       
+       ┃       
+    ┏━━╋━━┓    
+    ╹  ╹  ╹    
 '''
 
 kernel_line = kernel.replace('\n', '')
@@ -33,62 +39,87 @@ for y in range(len(kernel_matrix)):
             rules[char]['down'].add(kernel_matrix[y + 1][x])
 
 logging.basicConfig(level=logging.DEBUG, filename='wave-function-collapse.log', filemode='w', format='%(message)s')
-for char in rules:
-    logging.debug('\n')
-    logging.debug(f"'{char}'")
-    for key in rules[char].keys():
-        logging.debug(f"{key: <6} : {rules[char][key]}")
+# for char in rules:
+#     logging.debug('\n')
+#     logging.debug(f"'{char}'")
+#     for key in rules[char].keys():
+#         logging.debug(f"{key: <6} : {rules[char][key]}")
 
 
 def draw(grid, x, y, stdscr):
-    cell = grid[x][y]
+    cell = grid[y][x]
+    char = '?'
     if len(cell) == 0:
         char = '!'
     elif len(cell) == 1:
-        char = cell[0]
-    if char:
-        try:
-            stdscr.addstr(y, x, char)
-        except curses.error:
-            pass
-        stdscr.refresh()
+        char = list(cell)[0]
+    try:
+        stdscr.addstr(x, y, char)
+    except curses.error:
+        pass
+    stdscr.refresh()
 
 
 def get_least_entropy_coordinate(grid):
-    entropy = [{'x': x, 'y': y, 'entropy': len(grid[x][y])} for x in range(len(grid)) for y in range(len(grid[x])) if len(grid[x][y]) > 1]
+    entropy = [{'x': x, 'y': y, 'entropy': len(grid[y][x])} for y in range(len(grid)) for x in range(len(grid[y])) if len(grid[y][x]) > 1]
+    if len(entropy) == 0:
+        return None, None
+
     min_entropy = min(entropy, key=lambda e: e['entropy'])['entropy']
     cells = [(e['x'], e['y']) for e in entropy if e['entropy'] <= min_entropy]
     return random.choice(cells)
 
 
-def get_neighbors(grid, x, y):
-    coordinates = []
-    if x - 1 >= 0:
-        coordinates.append((x - 1, y))
-    if x + 1 < len(grid):
-        coordinates.append((x + 1, y))
-    if y - 1 >= 0:
-        coordinates.append((x, y - 1))
-    if y + 1 < len(grid[x]):
-        coordinates.append((x, y + 1))
-    return coordinates
-
-
 def collapse(grid, x, y, stdscr):
-    superposition = grid[x][y]
+    superposition = list(grid[y][x])
     weights = [rules[s]['weight'] for s in superposition]
     char = random.choices(superposition, weights, k=1)[0]
-    grid[x][y] = [char]
+    grid[y][x] = set(char)
     draw(grid, x, y, stdscr)
 
-    update(grid, deque(get_neighbors(grid, x, y)))
+    update(grid, deque([(x, y)]), stdscr)
+    # stdscr.getkey()
+
+    for y in range(len(grid)):
+        for x in range(len(grid[y])):
+            cell = grid[y][x]
+            if len(cell) > 1:
+                try:
+                    stdscr.addstr(x, y, '.')
+                except curses.error:
+                    pass
+    stdscr.refresh()
 
 
-def update(grid, queue):
+def update(grid, queue, stdscr):
     if queue:
-        coordinate = queue.pop()
+        x, y = queue.popleft()
+        cell = grid[y][x]
+        if x - 1 >= 0:
+            rule = {r for char in cell for r in rules[char]['up']}
+            update_cell(grid, x - 1, y, rule, queue, stdscr)
+        if x + 1 < len(grid[y]):
+            rule = {r for char in cell for r in rules[char]['down']}
+            update_cell(grid, x + 1, y, rule, queue, stdscr)
+        if y - 1 >= 0:
+            rule = {r for char in cell for r in rules[char]['left']}
+            update_cell(grid, x, y - 1, rule, queue, stdscr)
+        if y + 1 < len(grid):
+            rule = {r for char in cell for r in rules[char]['right']}
+            update_cell(grid, x, y + 1, rule, queue, stdscr)
+        update(grid, queue, stdscr)
 
-        update(grid, queue)
+
+def update_cell(grid, x, y, rule, queue, stdscr):
+    if len(rule) == 0:
+        return
+
+    len_cell = len(grid[y][x])
+    if len_cell > 1:
+        grid[y][x] &= rule
+        if len(grid[y][x]) < len_cell:
+            queue.append((x, y))
+            draw(grid, x, y, stdscr)
 
 
 def main(stdscr):
@@ -98,15 +129,18 @@ def main(stdscr):
     HEIGHT = stdscr.getmaxyx()[0]
     WIDTH = 64
     HEIGHT = 32
-    grid = [[list(rules.keys()) for _ in range(HEIGHT)] for _ in range(WIDTH)]
+    grid = [[set(rules.keys()) for _ in range(HEIGHT)] for _ in range(WIDTH)]
 
     for y in range(HEIGHT):
         for x in range(WIDTH):
             stdscr.insstr(y, x, '.')
 
-    for _ in range(WIDTH * HEIGHT):
+    while True:
         x, y = get_least_entropy_coordinate(grid)
-        collapse(grid, x, y, stdscr)
+        if not x and not y:
+            break
+        else:
+            collapse(grid, x, y, stdscr)
 
     curses.curs_set(0)
     stdscr.getkey()
