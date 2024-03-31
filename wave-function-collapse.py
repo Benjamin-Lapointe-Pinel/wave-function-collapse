@@ -39,11 +39,11 @@ for y in range(len(kernel_matrix)):
             rules[char]['down'].add(kernel_matrix[y + 1][x])
 
 logging.basicConfig(level=logging.DEBUG, filename='wave-function-collapse.log', filemode='w', format='%(message)s')
-# for char in rules:
-#     logging.debug('\n')
-#     logging.debug(f"'{char}'")
-#     for key in rules[char].keys():
-#         logging.debug(f"{key: <6} : {rules[char][key]}")
+for char in rules:
+    logging.debug('\n')
+    logging.debug(f"'{char}'")
+    for key in rules[char].keys():
+        logging.debug(f"{key: <6} : {rules[char][key]}")
 
 
 def draw(grid, x, y, stdscr):
@@ -130,8 +130,8 @@ def main(stdscr):
 
     WIDTH = stdscr.getmaxyx()[1]
     HEIGHT = stdscr.getmaxyx()[0]
-    WIDTH = 64
-    HEIGHT = 32
+    # WIDTH = 64
+    # HEIGHT = 32
     grid = [[set(rules.keys()) for _ in range(HEIGHT)] for _ in range(WIDTH)]
 
     for y in range(HEIGHT):
@@ -140,12 +140,12 @@ def main(stdscr):
 
     while True:
         x, y = get_least_entropy_coordinate(grid)
-        if x is not None and y is not None:
-            collapse(grid, x, y, stdscr)
+        if x is None or y is None:
+            break
+        collapse(grid, x, y, stdscr)
 
     curses.curs_set(0)
     stdscr.getkey()
-    logging.debug(grid[0][0])
 
 
 curses.wrapper(main)
