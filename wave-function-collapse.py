@@ -62,12 +62,15 @@ def draw(grid, x, y, stdscr):
 
 def get_least_entropy_coordinate(grid):
     entropy = [{'x': x, 'y': y, 'entropy': len(grid[y][x])} for y in range(len(grid)) for x in range(len(grid[y])) if len(grid[y][x]) > 1]
+
     if len(entropy) == 0:
         return None, None
 
     min_entropy = min(entropy, key=lambda e: e['entropy'])['entropy']
     cells = [(e['x'], e['y']) for e in entropy if e['entropy'] <= min_entropy]
-    return random.choice(cells)
+    cell = random.choice(cells)
+
+    return cell
 
 
 def collapse(grid, x, y, stdscr):
@@ -137,13 +140,12 @@ def main(stdscr):
 
     while True:
         x, y = get_least_entropy_coordinate(grid)
-        if not x and not y:
-            break
-        else:
+        if x is not None and y is not None:
             collapse(grid, x, y, stdscr)
 
     curses.curs_set(0)
     stdscr.getkey()
+    logging.debug(grid[0][0])
 
 
 curses.wrapper(main)
