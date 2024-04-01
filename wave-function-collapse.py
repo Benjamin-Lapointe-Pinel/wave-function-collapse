@@ -5,38 +5,48 @@ import random
 import curses
 from collections import deque
 import sys
-sys.setrecursionlimit(1000000)
+sys.setrecursionlimit(100000)
 
 kernel = '''\
-    ╻  ╻  ╻    
+    ┃  ┃  ┃    
     ┗━━╋━━┛    
        ┃       
        ┃       
-╺┓  ┏━━┻━━┓  ┏╸
+━┓  ┏━━┻━━┓  ┏━
  ┃  ┃     ┃  ┃ 
-╺╋━━┫     ┣━━╋╸
+━╋━━┫     ┣━━╋━
  ┃  ┃     ┃  ┃ 
-╺┛  ┗━━┳━━┛  ┗╸
+━┛  ┗━━┳━━┛  ┗━
        ┃       
        ┃       
     ┏━━╋━━┓    
-    ╹  ╹  ╹    
+    ┃  ┃  ┃    
 '''
 
+# kernel = '''\
+#     
+#  ┏┓ 
+#  ┗┛ 
+#     
+# '''
+
+# kernel = '''\
+# ━┳┻┳━
+# ━┻┳┻━
+# '''
+
 kernel_line = kernel.replace('\n', '')
-rules = {char: {'weight': kernel_line.count(char), 'up': set(), 'down': set(), 'left': set(), 'right': set()} for char in set(kernel_line)}
+kernel_set = set(kernel_line)
+rules = {char: {'weight': kernel_line.count(char), 'up': set(), 'down': set(), 'left': set(), 'right': set()} for char in kernel_set}
+rules['!'] = {'weight': 0, 'up': kernel_set, 'down': kernel_set, 'left': kernel_set, 'right': kernel_set}
 kernel_matrix = kernel.splitlines()
 for y in range(len(kernel_matrix)):
     for x in range(len(kernel_matrix[y])):
         char = kernel_matrix[y][x]
-        if x - 1 >= 0:
-            rules[char]['left'].add(kernel_matrix[y][x - 1])
-        if x + 1 < len(kernel_matrix[y]):
-            rules[char]['right'].add(kernel_matrix[y][x + 1])
-        if y - 1 >= 0:
-            rules[char]['up'].add(kernel_matrix[y - 1][x])
-        if y + 1 < len(kernel_matrix):
-            rules[char]['down'].add(kernel_matrix[y + 1][x])
+        rules[char]['left'].add(kernel_matrix[y][x - 1])
+        rules[char]['up'].add(kernel_matrix[y - 1][x])
+        rules[char]['right'].add(kernel_matrix[y][(x + 1) % len(kernel_matrix[y])])
+        rules[char]['down'].add(kernel_matrix[(y + 1) % len(kernel_matrix)][x])
 
 logging.basicConfig(level=logging.DEBUG, filename='wave-function-collapse.log', filemode='w', format='%(message)s')
 for char in rules:
@@ -98,34 +108,30 @@ def update(grid, queue, stdscr):
     if queue:
         x, y = queue.popleft()
         cell = grid[y][x]
-        if x - 1 >= 0:
-            rule = {r for char in cell for r in rules[char]['up']}
-            update_cell(grid, x - 1, y, rule, queue, stdscr)
-        if x + 1 < len(grid[y]):
-            rule = {r for char in cell for r in rules[char]['down']}
-            update_cell(grid, x + 1, y, rule, queue, stdscr)
-        if y - 1 >= 0:
-            rule = {r for char in cell for r in rules[char]['left']}
-            update_cell(grid, x, y - 1, rule, queue, stdscr)
-        if y + 1 < len(grid):
-            rule = {r for char in cell for r in rules[char]['right']}
-            update_cell(grid, x, y + 1, rule, queue, stdscr)
+        rule = {r for char in cell for r in rules[char]['up']}
+        update_cell(grid, len(grid[y]) - 1 if x - 1 < 0 else x - 1, y, rule, queue, stdscr)
+        rule = {r for char in cell for r in rules[char]['left']}
+        update_cell(grid, x, len(grid) - 1 if y - 1 < 0 else y - 1, rule, queue, stdscr)
+        rule = {r for char in cell for r in rules[char]['down']}
+        update_cell(grid, (x + 1) % len(grid[y]), y, rule, queue, stdscr)
+        rule = {r for char in cell for r in rules[char]['right']}
+        update_cell(grid, x, (y + 1) % len(grid), rule, queue, stdscr)
         update(grid, queue, stdscr)
 
 
 def update_cell(grid, x, y, rule, queue, stdscr):
-    if len(rule) == 0:
-        return
-
     len_cell = len(grid[y][x])
     if len_cell > 1:
         grid[y][x] &= rule
         if len(grid[y][x]) < len_cell:
+            if len(grid[y][x]) == 0:
+                grid[y][x] = ['!']
             queue.append((x, y))
             draw(grid, x, y, stdscr)
 
 
 def main(stdscr):
+    curses.curs_set(0)
     stdscr.clear()
 
     WIDTH = stdscr.getmaxyx()[1]
@@ -144,7 +150,6 @@ def main(stdscr):
             break
         collapse(grid, x, y, stdscr)
 
-    curses.curs_set(0)
     stdscr.getkey()
 
 
